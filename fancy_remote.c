@@ -12,6 +12,7 @@ typedef enum {
     Scene_MainMenu,
     Scene_PopupOne,
     Scene_PopupTwo,
+    Scene_PopupThree,
     Scene_count
 } Scene;
 
@@ -29,11 +30,13 @@ typedef struct {
 
 typedef enum {
     Event_ShowPopupOne,
-    Event_ShowPopupTwo
+    Event_ShowPopupTwo,
+    Event_ShowPopupThree
 } Event;
 typedef enum {
     MenuSelection_One,
-    MenuSelection_Two
+    MenuSelection_Two,
+    MenuSelection_Three
 } MenuSelection;
 
 void fancy_remote_menu_callback_main_menu(void* context, uint32_t index) {
@@ -44,6 +47,10 @@ void fancy_remote_menu_callback_main_menu(void* context, uint32_t index) {
         break;
     case MenuSelection_Two:
         scene_manager_handle_custom_event(app->scene_manager, Event_ShowPopupTwo);
+        break;
+    case MenuSelection_Three:
+        scene_manager_handle_custom_event(app->scene_manager, Event_ShowPopupThree);
+        break;
     }
 }
 void fancy_remote_scene_on_enter_MainMenu(void* context) {
@@ -55,7 +62,13 @@ void fancy_remote_scene_on_enter_MainMenu(void* context) {
         app->menu, "option #1", NULL, MenuSelection_One, fancy_remote_menu_callback_main_menu, app);
     menu_add_item(
         app->menu, "option #2", NULL, MenuSelection_Two, fancy_remote_menu_callback_main_menu, app);
-
+    menu_add_item(
+        app->menu,
+        "option #3 (mine)",
+        NULL,
+        MenuSelection_Three,
+        fancy_remote_menu_callback_main_menu,
+        app);
     view_dispatcher_switch_to_view(app->view_dispatcher, FView_Menu);
 }
 bool fancy_remote_scene_on_event_MainMenu(void* context, SceneManagerEvent event) {
@@ -70,6 +83,10 @@ bool fancy_remote_scene_on_event_MainMenu(void* context, SceneManagerEvent event
             break;
         case Event_ShowPopupTwo:
             scene_manager_next_scene(app->scene_manager, Scene_PopupTwo);
+            consumed = true;
+            break;
+        case Event_ShowPopupThree:
+            scene_manager_next_scene(app->scene_manager, Scene_PopupThree);
             consumed = true;
             break;
         }
@@ -110,10 +127,27 @@ void fancy_remote_scene_on_enter_PopupTwo(void* context) {
     popup_set_text(app->popup, "TWO DOWN<>PLEASE WORK", 60, 20, AlignLeft, AlignTop);
     view_dispatcher_switch_to_view(app->view_dispatcher, FView_Popup);
 }
+void fancy_remote_scene_on_enter_PopupThree(void* context) {
+    FancyRemote* app = context;
+    popup_reset(app->popup);
+    popup_set_context(app->popup, app);
+    popup_set_header(app->popup, "My own third", 20, 20, AlignLeft, AlignTop);
+    popup_set_icon(app->popup, 10, 10, NULL);
+    popup_set_text(
+        app->popup, "Lorem Ipsum Popup text is very cool", 10, 10, AlignLeft, AlignCenter);
+    view_dispatcher_switch_to_view(app->view_dispatcher, FView_Popup);
+}
 bool fancy_remote_scene_on_event_PopupTwo() {
     return false;
 }
+bool fancy_remote_scene_on_event_PopupThree() {
+    return false;
+}
 void fancy_remote_scene_on_exit_PopupTwo(void* context) {
+    FancyRemote* app = context;
+    popup_reset(app->popup);
+}
+void fancy_remote_scene_on_exit_PopupThree(void* context) {
     FancyRemote* app = context;
     popup_reset(app->popup);
 }
@@ -121,15 +155,19 @@ void fancy_remote_scene_on_exit_PopupTwo(void* context) {
 void (*const fancy_remote_scene_on_enter_handlers[])(void*) = {
     fancy_remote_scene_on_enter_MainMenu,
     fancy_remote_scene_on_enter_PopupOne,
-    fancy_remote_scene_on_enter_PopupTwo};
+    fancy_remote_scene_on_enter_PopupTwo,
+    fancy_remote_scene_on_enter_PopupThree};
+
 bool (*const fancy_remote_scene_on_event_handlers[])(void*, SceneManagerEvent) = {
     fancy_remote_scene_on_event_MainMenu,
     fancy_remote_scene_on_event_PopupOne,
-    fancy_remote_scene_on_event_PopupTwo};
+    fancy_remote_scene_on_event_PopupTwo,
+    fancy_remote_scene_on_event_PopupThree};
 void (*const fancy_remote_scene_on_exit_handlers[])(void*) = {
     fancy_remote_scene_on_exit_MainMenu,
     fancy_remote_scene_on_exit_PopupOne,
-    fancy_remote_scene_on_exit_PopupTwo};
+    fancy_remote_scene_on_exit_PopupTwo,
+    fancy_remote_scene_on_exit_PopupThree};
 //bringing it all together is this thing
 const SceneManagerHandlers fancy_remote_scene_event_handlers = {
     .on_enter_handlers = fancy_remote_scene_on_enter_handlers,
@@ -150,12 +188,14 @@ bool fancy_remote_scene_manager_custom_event_callback(void* context, uint32_t cu
 }
 void fancy_remote_view_dispatcher_init(FancyRemote* app) {
     app->view_dispatcher = view_dispatcher_alloc();
-    view_dispatcher_enable_queue(app->view_dispatcher);
     app->menu = menu_alloc();
     app->popup = popup_alloc();
     view_dispatcher_set_event_callback_context(app->view_dispatcher, app);
     view_dispatcher_set_custom_event_callback(
         app->view_dispatcher, fancy_remote_scene_manager_custom_event_callback);
+
+    view_dispatcher_set_navigation_event_callback(
+        app->view_dispatcher, fancy_remote_scene_manager_navigation_event_callback);
     view_dispatcher_add_view(app->view_dispatcher, FView_Menu, menu_get_view(app->menu));
     view_dispatcher_add_view(app->view_dispatcher, FView_Popup, popup_get_view(app->popup));
 }
@@ -165,4 +205,27 @@ FancyRemote* fancy_remote_init() {
     fancy_remote_scene_manager_init(app);
     fancy_remote_view_dispatcher_init(app);
     return app;
+}
+//frees all data when done
+void fancy_remote_free(FancyRemote* app) {
+    scene_manager_free(app->scene_manager);
+    view_dispatcher_remove_view(app->view_dispatcher, FView_Menu);
+    view_dispatcher_remove_view(app->view_dispatcher, FView_Popup);
+    view_dispatcher_free(app->view_dispatcher);
+    menu_free(app->menu);
+    popup_free(app->popup);
+    free(app);
+}
+int32_t fancy_remote_app(/*void* p*/) {
+    FancyRemote* app = fancy_remote_init();
+    Gui* gui = furi_record_open(RECORD_GUI);
+    view_dispatcher_attach_to_gui(app->view_dispatcher, gui, ViewDispatcherTypeFullscreen);
+    scene_manager_next_scene(app->scene_manager, Scene_MainMenu);
+    //this is the main loop
+    view_dispatcher_run(app->view_dispatcher);
+
+    //this runs after program ends
+    furi_record_close(RECORD_GUI);
+    fancy_remote_free(app);
+    return 0;
 }
