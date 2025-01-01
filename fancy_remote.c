@@ -132,32 +132,24 @@ bool fancy_remote_scene_manager_navigation_event_callback(void* context) {
     FancyRemote* app = context;
     return scene_manager_handle_back_event(app->scene_manager);
 }
+void backToHome(void* context, uint32_t index) {
+    (void)index;
+    fancy_remote_scene_manager_navigation_event_callback(context);
+}
+void addGeneric(void* context, int Vx, int Vy, int x, int y) {
+    FancyRemote* app = context;
+    button_panel_add_item(
+        app->buttonPanel, 0, Vx, Vy, x, y, &I_fancy_remote, &I_selected, backToHome, context);
+}
 void fancy_remote_scene_on_enter_RemotePanel(void* context) {
     FancyRemote* app = context;
     button_panel_reset(app->buttonPanel);
-    button_panel_reserve(app->buttonPanel, 2, 1);
-    button_panel_add_item(
-        app->buttonPanel,
-        0,
-        0,
-        0,
-        5,
-        5,
-        &I_fancy_remote,
-        &I_selected,
-        fancy_remote_scene_manager_navigation_event_callback,
-        context);
-    button_panel_add_item(
-        app->buttonPanel,
-        0,
-        1,
-        0,
-        20,
-        5,
-        &I_fancy_remote,
-        &I_selected,
-        fancy_remote_scene_manager_navigation_event_callback,
-        context);
+    button_panel_reserve(app->buttonPanel, 2, 3);
+    addGeneric(context, 0, 0, 5, 5);
+    addGeneric(context, 1, 0, 20, 5);
+    addGeneric(context, 0, 1, 5, 20);
+    addGeneric(context, 0, 2, 5, 35);
+    addGeneric(context, 1, 2, 20, 35);
     view_dispatcher_switch_to_view(app->view_dispatcher, FView_ButtonPanel);
 }
 bool fancy_remote_scene_on_event_PopupTwo() {
@@ -233,6 +225,7 @@ void fancy_remote_free(FancyRemote* app) {
     scene_manager_free(app->scene_manager);
     view_dispatcher_remove_view(app->view_dispatcher, FView_Menu);
     view_dispatcher_remove_view(app->view_dispatcher, FView_Popup);
+    view_dispatcher_remove_view(app->view_dispatcher, FView_ButtonPanel);
     view_dispatcher_free(app->view_dispatcher);
     submenu_free(app->submenu);
     popup_free(app->popup);
