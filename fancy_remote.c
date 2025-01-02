@@ -141,15 +141,32 @@ void addGeneric(void* context, int Vx, int Vy, int x, int y) {
     button_panel_add_item(
         app->buttonPanel, 0, Vx, Vy, x, y, &I_fancy_remote, &I_selected, backToHome, context);
 }
+void addVolumeButtons(void* context, int Vx, int Vy, int x, int y, void* doUp, void* doDown) {
+    /*
+    in origional the text is at (35,66), volume up is at (38,53), and volume down is at (38,91)
+    so relative measurments are: volUp:(+3,+0),text:(+0,+13),volDown(+3,+25)
+    */
+    FancyRemote* app = context;
+    button_panel_add_item(
+        app->buttonPanel, 0, Vx, Vy, x + 3, y, &I_volup_24x21, &I_volup_hover_24x21, doUp, context);
+    button_panel_add_icon(app->buttonPanel, x, y + 13, &I_vol_tv_text_29x34);
+    button_panel_add_item(
+        app->buttonPanel,
+        0,
+        Vx,
+        Vy + 1,
+        x + 3,
+        y + 38,
+        &I_voldown_24x21,
+        &I_voldown_hover_24x21,
+        doDown,
+        context);
+}
 void fancy_remote_scene_on_enter_RemotePanel(void* context) {
     FancyRemote* app = context;
     button_panel_reset(app->buttonPanel);
-    button_panel_reserve(app->buttonPanel, 2, 3);
-    addGeneric(context, 0, 0, 5, 5);
-    addGeneric(context, 1, 0, 20, 5);
-    addGeneric(context, 0, 1, 5, 20);
-    addGeneric(context, 0, 2, 5, 35);
-    addGeneric(context, 1, 2, 20, 35);
+    button_panel_reserve(app->buttonPanel, 1, 2);
+    addVolumeButtons(context, 0, 0, 17, 25, backToHome, backToHome);
     view_dispatcher_switch_to_view(app->view_dispatcher, FView_ButtonPanel);
 }
 bool fancy_remote_scene_on_event_PopupTwo() {
