@@ -24,6 +24,16 @@ typedef enum {
     FView_ButtonPanel
 } FView;
 
+typedef enum {
+    Button_VolumeUp,
+    Button_VolumeDown,
+    Button_NavigateLeft,
+    Button_NavigateUp,
+    Button_NavigateRight,
+    Button_NavigateDown,
+    Button_Power
+} Button;
+
 typedef struct {
     SceneManager* scene_manager;
     ViewDispatcher* view_dispatcher;
@@ -148,11 +158,20 @@ void addVolumeButtons(void* context, int Vx, int Vy, int x, int y, void* doUp, v
     */
     FancyRemote* app = context;
     button_panel_add_item(
-        app->buttonPanel, 0, Vx, Vy, x + 3, y, &I_volup_24x21, &I_volup_hover_24x21, doUp, context);
+        app->buttonPanel,
+        Button_VolumeUp,
+        Vx,
+        Vy,
+        x + 3,
+        y,
+        &I_volup_24x21,
+        &I_volup_hover_24x21,
+        doUp,
+        context);
     button_panel_add_icon(app->buttonPanel, x, y + 13, &I_vol_tv_text_29x34);
     button_panel_add_item(
         app->buttonPanel,
-        0,
+        Button_VolumeDown,
         Vx,
         Vy + 1,
         x + 3,
@@ -166,7 +185,9 @@ void fancy_remote_scene_on_enter_RemotePanel(void* context) {
     FancyRemote* app = context;
     button_panel_reset(app->buttonPanel);
     button_panel_reserve(app->buttonPanel, 1, 2);
-    addVolumeButtons(context, 0, 0, 17, 25, backToHome, backToHome);
+    /*using 69 puts the bottom of the volume down button at the bottom of the screen
+    (screen height of 128, block height of 59, 128-59=69) */
+    addVolumeButtons(context, 0, 0, 17, 69, backToHome, backToHome);
     view_dispatcher_switch_to_view(app->view_dispatcher, FView_ButtonPanel);
 }
 bool fancy_remote_scene_on_event_PopupTwo() {
