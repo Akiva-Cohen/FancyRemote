@@ -9,12 +9,23 @@
 #include <gui/modules/submenu.h>
 #include <gui/modules/button_panel.h>
 #include <gui/icon.h>
+#include <storage/storage.h>
+//idk what infrared files i need so ima import them all
+#include <infrared.h>
+#include <infrared_transmit.h>
+#include <infrared_worker.h>
+#include <furi_hal_infrared.h>
+
+#include <flipper_format.h>
+#include <flipper_format_i.h>
+#include <flipper_format_stream.h>
 
 typedef enum {
     Scene_MainMenu,
     Scene_PopupOne,
-    Scene_PopupTwo,
     Scene_RemotePanel,
+    Scene_EditPanel,
+    Scene_RecordPanel,
     Scene_count
 } Scene;
 
@@ -35,17 +46,31 @@ typedef enum {
 } Button;
 
 typedef struct {
+    InfraredMessage* VolumeUp;
+    InfraredMessage* VolumeDown;
+    InfraredMessage* NavigateLeft;
+    InfraredMessage* NavigateUp;
+    InfraredMessage* NavigateRight;
+    InfraredMessage* NavigateDown;
+    InfraredMessage* Power;
+} Messages;
+typedef struct {
     SceneManager* scene_manager;
     ViewDispatcher* view_dispatcher;
     Submenu* submenu;
     Popup* popup;
     ButtonPanel* buttonPanel;
+    Storage* storage;
+    FlipperFormat* flipperFormat;
+    InfraredWorker* infraredWorker;
+    Messages* messages;
 } FancyRemote;
 
 typedef enum {
     Event_ShowPopupOne,
-    Event_ShowPopupTwo,
-    Event_ShowRemotePanel
+    Event_ShowRemotePanel,
+    Event_ShowEditPanel,
+    Event_ShowRecordPanel
 } Event;
 typedef enum {
     MenuSelection_One,
@@ -53,6 +78,110 @@ typedef enum {
     MenuSelection_Three
 } MenuSelection;
 
+const char* fancy_remote_Volume_up = "Volume_up";
+const char* fancy_remote_Volume_down = "Volume_down";
+
+const char* getStringFromKey(void* context, char* key) {
+    FancyRemote* app = context;
+    FuriString* o = furi_string_alloc();
+    flipper_format_read_string(app->flipperFormat, key, o);
+    const char* out = furi_string_get_cstr(o);
+    return out;
+}
+InfraredProtocol getProtocol(void* context) {
+    FancyRemote* app = context;
+    FuriString* o = furi_string_alloc();
+    flipper_format_read_string(app->flipperFormat, "protocol", o);
+    return infrared_get_protocol_by_name(furi_string_get_cstr(o));
+}
+uint32_t getAdress(void* context) {
+    FancyRemote* app = context;
+    uint8_t data;
+    flipper_format_read_hex(app->flipperFormat, "address", data, 4);
+    return data;
+}
+uint32_t getCommand(void* context) {
+    FancyRemote* app = context;
+    uint8_t data;
+    flipper_format_read_hex(app->flipperFormat, "command", data, 4);
+}
+void makeButton(void* context, int index) {
+    FancyRemote* app = context;
+    FuriString* o = furi_string_alloc();
+    flipper_format_read_string(app->flipperFormat, "type", o);
+    if(strcmp(furi_string_get_cstr(o), "parsed")) {
+        InfraredMessage* message;
+        message->protocol = getProtocol(context);
+        message->address = getAdress(context);
+        message->command = getCommand(context);
+        switch(index) {
+        case Button_VolumeUp:
+            app->messages->VolumeUp = message;
+            break;
+        case Button_VolumeDown:
+            app->messages->VolumeDown = message;
+            break;
+        case Button_NavigateDown:
+            app->messages->NavigateDown = message;
+            break;
+        case Button_NavigateLeft:
+            app->messages->NavigateLeft = message;
+            break;
+        case Button_NavigateRight:
+            app->messages->NavigateRight = message;
+            break;
+        case Button_NavigateUp:
+            app->messages->NavigateUp = message;
+            break;
+        case Button_Power:
+            app->messages->Power = message;
+        }
+    } else {
+    }
+}
+void processButton(void* context, FuriString* nameIn) {
+    FancyRemote* app = context;
+    const char* name = furi_string_get_cstr(nameIn);
+    if(strcmp(name, fancy_remote_Volume_up)) {
+        makeButton(context, Button_VolumeUp);
+    } else if(strcmp(name, fancy_remote_Volume_down)) {
+        makeButton(context, Button_VolumeDown);
+    }
+}
+
+const char* getFileText(void* context) {
+    FancyRemote* app = context;
+    int a = 0;
+    FuriString* o = furi_string_alloc();
+    if(flipper_format_file_open_existing(app->flipperFormat, EXT_PATH("infrared/Cable.ir"))) {
+        while(flipper_format_read_string(app->flipperFormat, "name", o)) {
+            processButton(context, o);
+        }
+    }
+    const char* out = furi_string_get_cstr(o);
+    return out;
+    flipper_format_file_close(app->flipperFormat);
+    if(a == 0) {
+        return "zero";
+    } else if(a == 1) {
+        return "one";
+    } else if(a == 2) {
+        return "two";
+    } else if(a == 3) {
+        return "three";
+    } else if(a == 4) {
+        return "four";
+    } else if(a == -1) {
+        return "negative";
+    } else {
+        return "more";
+    }
+}
+void fancy_remote_button_press(void* context, uint32_t index) {
+    UNUSED(index);
+    FancyRemote* app = context;
+    UNUSED(app);
+}
 void fancy_remote_menu_callback_main_menu(void* context, uint32_t index) {
     FancyRemote* app = context;
     switch(index) {
@@ -60,10 +189,10 @@ void fancy_remote_menu_callback_main_menu(void* context, uint32_t index) {
         scene_manager_handle_custom_event(app->scene_manager, Event_ShowPopupOne);
         break;
     case MenuSelection_Two:
-        scene_manager_handle_custom_event(app->scene_manager, Event_ShowPopupTwo);
+        scene_manager_handle_custom_event(app->scene_manager, Event_ShowRemotePanel);
         break;
     case MenuSelection_Three:
-        scene_manager_handle_custom_event(app->scene_manager, Event_ShowRemotePanel);
+        scene_manager_handle_custom_event(app->scene_manager, Event_ShowEditPanel);
         break;
     }
 }
@@ -74,10 +203,10 @@ void fancy_remote_scene_on_enter_MainMenu(void* context) {
     submenu_add_item(
         app->submenu, "option #1", MenuSelection_One, fancy_remote_menu_callback_main_menu, app);
     submenu_add_item(
-        app->submenu, "option #2", MenuSelection_Two, fancy_remote_menu_callback_main_menu, app);
+        app->submenu, "Use Remote", MenuSelection_Two, fancy_remote_menu_callback_main_menu, app);
     submenu_add_item(
         app->submenu,
-        "option #3 (mine)",
+        "Edit Remote",
         MenuSelection_Three,
         fancy_remote_menu_callback_main_menu,
         app);
@@ -93,13 +222,14 @@ bool fancy_remote_scene_on_event_MainMenu(void* context, SceneManagerEvent event
             scene_manager_next_scene(app->scene_manager, Scene_PopupOne);
             consumed = true;
             break;
-        case Event_ShowPopupTwo:
-            scene_manager_next_scene(app->scene_manager, Scene_PopupTwo);
-            consumed = true;
-            break;
         case Event_ShowRemotePanel:
             scene_manager_next_scene(app->scene_manager, Scene_RemotePanel);
             consumed = true;
+            break;
+        case Event_ShowEditPanel:
+            scene_manager_next_scene(app->scene_manager, Scene_EditPanel);
+            consumed = true;
+            break;
         }
         break;
     default:
@@ -109,7 +239,6 @@ bool fancy_remote_scene_on_event_MainMenu(void* context, SceneManagerEvent event
 }
 void fancy_remote_scene_on_exit_MainMenu(void* context) {
     FancyRemote* app = context;
-
     submenu_reset(app->submenu);
 }
 void fancy_remote_scene_on_enter_PopupOne(void* context) {
@@ -118,26 +247,33 @@ void fancy_remote_scene_on_enter_PopupOne(void* context) {
     popup_set_context(app->popup, app);
     popup_set_header(app->popup, "Pop#1", 60, 10, AlignCenter, AlignTop);
     popup_set_icon(app->popup, 10, 10, NULL);
-    popup_set_text(app->popup, "ONE DOWN<>PLEASE WORK", 60, 20, AlignLeft, AlignTop);
+    popup_set_text(app->popup, getFileText(context), 60, 20, AlignLeft, AlignTop);
+    view_dispatcher_switch_to_view(app->view_dispatcher, FView_Popup);
+}
+void fancy_remote_scene_on_enter_RecordPanel(void* context) {
+    FancyRemote* app = context;
+    popup_reset(app->popup);
+    popup_set_context(app->popup, app);
+    popup_set_header(app->popup, "Add Button", 60, 10, AlignLeft, AlignTop);
+    popup_set_icon(app->popup, 10, 10, NULL);
+    popup_set_text(app->popup, "Point remote and press button", 5, 20, AlignLeft, AlignCenter);
     view_dispatcher_switch_to_view(app->view_dispatcher, FView_Popup);
 }
 bool fancy_remote_scene_on_event_PopupOne() {
+    return false;
+}
+bool fancy_remote_scene_on_event_RecordPanel() {
     return false;
 }
 void fancy_remote_scene_on_exit_PopupOne(void* context) {
     FancyRemote* app = context;
     popup_reset(app->popup);
 }
-
-void fancy_remote_scene_on_enter_PopupTwo(void* context) {
+void fancy_remote_scene_on_exit_RecordPanel(void* context) {
     FancyRemote* app = context;
     popup_reset(app->popup);
-    popup_set_context(app->popup, app);
-    popup_set_header(app->popup, "Pop#2", 60, 10, AlignCenter, AlignTop);
-    popup_set_icon(app->popup, 10, 10, NULL);
-    popup_set_text(app->popup, "TWO DOWN<>PLEASE WORK", 60, 20, AlignLeft, AlignTop);
-    view_dispatcher_switch_to_view(app->view_dispatcher, FView_Popup);
 }
+
 bool fancy_remote_scene_manager_navigation_event_callback(void* context) {
     FancyRemote* app = context;
     return scene_manager_handle_back_event(app->scene_manager);
@@ -190,17 +326,26 @@ void fancy_remote_scene_on_enter_RemotePanel(void* context) {
     addVolumeButtons(context, 0, 0, 17, 69, backToHome, backToHome);
     view_dispatcher_switch_to_view(app->view_dispatcher, FView_ButtonPanel);
 }
-bool fancy_remote_scene_on_event_PopupTwo() {
-    return false;
+void fancy_remote_scene_on_enter_EditPanel(void* context) {
+    FancyRemote* app = context;
+    button_panel_reset(app->buttonPanel);
+    button_panel_reserve(app->buttonPanel, 1, 2);
+    addVolumeButtons(context, 0, 0, 17, 69, backToHome, backToHome);
+    view_dispatcher_switch_to_view(app->view_dispatcher, FView_ButtonPanel);
 }
+
 bool fancy_remote_scene_on_event_RemotePanel() {
     return false;
 }
-void fancy_remote_scene_on_exit_PopupTwo(void* context) {
-    FancyRemote* app = context;
-    popup_reset(app->popup);
+bool fancy_remote_scene_on_event_EditPanel() {
+    return false;
 }
+
 void fancy_remote_scene_on_exit_RemotePanel(void* context) {
+    FancyRemote* app = context;
+    button_panel_reset(app->buttonPanel);
+}
+void fancy_remote_scene_on_exit_EditPanel(void* context) {
     FancyRemote* app = context;
     button_panel_reset(app->buttonPanel);
 }
@@ -208,19 +353,22 @@ void fancy_remote_scene_on_exit_RemotePanel(void* context) {
 void (*const fancy_remote_scene_on_enter_handlers[])(void*) = {
     fancy_remote_scene_on_enter_MainMenu,
     fancy_remote_scene_on_enter_PopupOne,
-    fancy_remote_scene_on_enter_PopupTwo,
-    fancy_remote_scene_on_enter_RemotePanel};
+    fancy_remote_scene_on_enter_RemotePanel,
+    fancy_remote_scene_on_enter_EditPanel,
+    fancy_remote_scene_on_enter_RecordPanel};
 
 bool (*const fancy_remote_scene_on_event_handlers[])(void*, SceneManagerEvent) = {
     fancy_remote_scene_on_event_MainMenu,
     fancy_remote_scene_on_event_PopupOne,
-    fancy_remote_scene_on_event_PopupTwo,
-    fancy_remote_scene_on_event_RemotePanel};
+    fancy_remote_scene_on_event_RemotePanel,
+    fancy_remote_scene_on_event_EditPanel,
+    fancy_remote_scene_on_event_RecordPanel};
 void (*const fancy_remote_scene_on_exit_handlers[])(void*) = {
     fancy_remote_scene_on_exit_MainMenu,
     fancy_remote_scene_on_exit_PopupOne,
-    fancy_remote_scene_on_exit_PopupTwo,
-    fancy_remote_scene_on_exit_RemotePanel};
+    fancy_remote_scene_on_exit_RemotePanel,
+    fancy_remote_scene_on_exit_EditPanel,
+    fancy_remote_scene_on_exit_RecordPanel};
 //bringing it all together is this thing
 const SceneManagerHandlers fancy_remote_scene_event_handlers = {
     .on_enter_handlers = fancy_remote_scene_on_enter_handlers,
@@ -254,6 +402,9 @@ void fancy_remote_view_dispatcher_init(FancyRemote* app) {
 
 FancyRemote* fancy_remote_init() {
     FancyRemote* app = malloc(sizeof(FancyRemote));
+    app->storage = furi_record_open(RECORD_STORAGE);
+    app->flipperFormat = flipper_format_file_alloc(app->storage);
+    app->infraredWorker = infrared_worker_alloc();
     fancy_remote_scene_manager_init(app);
     fancy_remote_view_dispatcher_init(app);
     return app;
@@ -268,6 +419,8 @@ void fancy_remote_free(FancyRemote* app) {
     submenu_free(app->submenu);
     popup_free(app->popup);
     button_panel_free(app->buttonPanel);
+    flipper_format_free(app->flipperFormat);
+    infrared_worker_free(app->infraredWorker);
     free(app);
 }
 int32_t fancy_remote_app(/*void* p*/) {
@@ -277,7 +430,6 @@ int32_t fancy_remote_app(/*void* p*/) {
     scene_manager_next_scene(app->scene_manager, Scene_MainMenu);
     //this is the main loop
     view_dispatcher_run(app->view_dispatcher);
-
     //this runs after program ends
     fancy_remote_free(app);
     return 0;
