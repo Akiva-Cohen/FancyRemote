@@ -75,7 +75,7 @@ typedef struct {
     Submenu* submenu;
     Popup* popup;
     ButtonPanel* buttonPanel;
-    Storage* storage;
+    InfraredWorker* worker;
     Signal* current;
     int currentIndex;
 } FancyRemote;
@@ -190,25 +190,33 @@ bool makeSignal(void* context, Signal* signal, int index) {
     furi_record_close(RECORD_STORAGE);
     return out;
 }
-void sendIrSignal(void* context, int index) {
+void sendIrSignal(void* context, int index, InputType type) {
     FancyRemote* app = context;
     bool go = true;
-    if(app->currentIndex != index) {
-        go = makeSignal(context, app->current, index);
-    }
-    if(go) {
-        bool test = app->current->isRaw;
-        if(test) {
-            infrared_send_raw_ext(
-                app->current->payload.raw.data,
-                app->current->payload.raw.size,
-                true,
-                app->current->payload.raw.frequency,
-                app->current->payload.raw.duty_cycle);
-        } else {
-            const InfraredMessage* message = &app->current->payload.message;
-            infrared_send(message, 10);
+    if(type == InputTypePress) {
+        if(app->currentIndex != index) {
+            go = makeSignal(context, app->current, index);
         }
+        if(go) {
+            bool test = app->current->isRaw;
+            if(test) {
+                infrared_worker_set_raw_signal(
+                    app->worker,
+                    app->current->payload.raw.data,
+                    app->current->payload.raw.size,
+                    app->current->payload.raw.frequency,
+                    app->current->payload.raw.duty_cycle);
+
+            } else {
+                const InfraredMessage* message = &app->current->payload.message;
+                infrared_worker_set_decoded_signal(app->worker, message);
+            }
+            infrared_worker_tx_set_get_signal_callback(
+                app->worker, infrared_worker_tx_get_signal_steady_callback, context);
+            infrared_worker_tx_start(app->worker);
+        }
+    } else if(type == InputTypeRelease) {
+        infrared_worker_tx_stop(app->worker);
     }
 }
 
@@ -418,6 +426,9 @@ void fancy_remote_view_dispatcher_init(FancyRemote* app) {
     app->submenu = submenu_alloc();
     app->popup = popup_alloc();
     app->buttonPanel = button_panel_alloc();
+    app->currentIndex = -1;
+    app->current = malloc(sizeof(Signal));
+
     view_dispatcher_set_event_callback_context(app->view_dispatcher, app);
     view_dispatcher_set_custom_event_callback(
         app->view_dispatcher, fancy_remote_scene_manager_custom_event_callback);
@@ -432,13 +443,14 @@ void fancy_remote_view_dispatcher_init(FancyRemote* app) {
 
 FancyRemote* fancy_remote_init() {
     FancyRemote* app = malloc(sizeof(FancyRemote));
-    app->storage = furi_record_open(RECORD_STORAGE);
+    app->worker = infrared_worker_alloc();
     fancy_remote_scene_manager_init(app);
     fancy_remote_view_dispatcher_init(app);
     return app;
 }
 //frees all data when done
 void fancy_remote_free(FancyRemote* app) {
+    infrared_worker_free(app->worker);
     scene_manager_free(app->scene_manager);
     view_dispatcher_remove_view(app->view_dispatcher, FView_Menu);
     view_dispatcher_remove_view(app->view_dispatcher, FView_Popup);
