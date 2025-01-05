@@ -80,6 +80,7 @@ typedef struct {
     Storage* storage;
     FlipperFormat* flipperFormat;
     Messages* messages;
+    Signal* current;
 } FancyRemote;
 
 typedef enum {
