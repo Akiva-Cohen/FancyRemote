@@ -13,12 +13,13 @@
 //idk what infrared files i need so ima import them all
 #include <infrared.h>
 #include <infrared_transmit.h>
-#include <infrared_worker.h>
 #include <furi_hal_infrared.h>
 
 #include <flipper_format.h>
 #include <flipper_format_i.h>
 #include <flipper_format_stream.h>
+
+#include <infrared_worker.h>
 
 typedef enum {
     Scene_MainMenu,
@@ -46,14 +47,30 @@ typedef enum {
 } Button;
 
 typedef struct {
-    InfraredMessage* VolumeUp;
-    InfraredMessage* VolumeDown;
-    InfraredMessage* NavigateLeft;
-    InfraredMessage* NavigateUp;
-    InfraredMessage* NavigateRight;
-    InfraredMessage* NavigateDown;
-    InfraredMessage* Power;
+    uint32_t frequency;
+    float duty_cycle;
+    uint32_t data;
+    uint32_t size;
+} RawSignal;
+
+typedef struct {
+    bool isRaw;
+    union {
+        InfraredMessage message;
+        RawSignal raw;
+    } payload;
+} Signal;
+typedef struct {
+    Signal* VolumeUp;
+    Signal* VolumeDown;
+    Signal* NavigateLeft;
+    Signal* NavigateUp;
+    Signal* NavigateRight;
+    Signal* NavigateDown;
+    Signal* Power;
+    Signal* length;
 } Messages;
+//define an array so they would be mapped
 typedef struct {
     SceneManager* scene_manager;
     ViewDispatcher* view_dispatcher;
@@ -62,7 +79,6 @@ typedef struct {
     ButtonPanel* buttonPanel;
     Storage* storage;
     FlipperFormat* flipperFormat;
-    InfraredWorker* infraredWorker;
     Messages* messages;
 } FancyRemote;
 
@@ -81,107 +97,164 @@ typedef enum {
 const char* fancy_remote_Volume_up = "Volume_up";
 const char* fancy_remote_Volume_down = "Volume_down";
 
-const char* getStringFromKey(void* context, char* key) {
-    FancyRemote* app = context;
-    FuriString* o = furi_string_alloc();
-    flipper_format_read_string(app->flipperFormat, key, o);
-    const char* out = furi_string_get_cstr(o);
-    return out;
-}
 InfraredProtocol getProtocol(void* context) {
     FancyRemote* app = context;
     FuriString* o = furi_string_alloc();
     flipper_format_read_string(app->flipperFormat, "protocol", o);
-    return infrared_get_protocol_by_name(furi_string_get_cstr(o));
+    const char* outC = furi_string_get_cstr(o);
+    furi_string_free(o);
+    return infrared_get_protocol_by_name(outC);
 }
 uint32_t getAdress(void* context) {
     FancyRemote* app = context;
-    uint8_t data;
-    flipper_format_read_hex(app->flipperFormat, "address", data, 4);
+    uint8_t data = 0;
+    flipper_format_read_hex(app->flipperFormat, "address", &data, 4);
     return data;
 }
 uint32_t getCommand(void* context) {
     FancyRemote* app = context;
-    uint8_t data;
-    flipper_format_read_hex(app->flipperFormat, "command", data, 4);
+    uint8_t data = 0;
+    flipper_format_read_hex(app->flipperFormat, "command", &data, 4);
+    return data;
+}
+uint32_t getFrequency(void* context) {
+    FancyRemote* app = context;
+    uint32_t num;
+    flipper_format_read_uint32(app->flipperFormat, "frequency", &num, 1);
+    return num;
+}
+float getDutyCycle(void* context) {
+    FancyRemote* app = context;
+    float num;
+    flipper_format_read_float(app->flipperFormat, "duty_cycle", &num, 1);
+    return num;
+}
+uint32_t getTimingsSize(void* context) {
+    FancyRemote* app = context;
+    uint32_t size;
+    flipper_format_get_value_count(app->flipperFormat, "data", &size);
+    return size;
+}
+uint32_t* getTimings(void* context, uint32_t size) {
+    FancyRemote* app = context;
+    if(size <= 1024) {
+        uint32_t* data = malloc(sizeof(uint32_t) * size);
+        flipper_format_read_uint32(app->flipperFormat, "data", data, size);
+        return data;
+    }
+    return NULL;
+}
+Signal* indexToMessage(void* context, int index) {
+    FancyRemote* app = context;
+    switch(index) {
+    case Button_NavigateDown:
+        return app->messages->NavigateDown;
+        break;
+    case Button_NavigateLeft:
+        return app->messages->NavigateLeft;
+        break;
+    case Button_NavigateRight:
+        return app->messages->NavigateRight;
+        break;
+    case Button_NavigateUp:
+        return app->messages->NavigateUp;
+        break;
+    case Button_Power:
+        return app->messages->Power;
+        break;
+    case Button_VolumeDown:
+        return app->messages->VolumeDown;
+        break;
+    case Button_VolumeUp:
+        return app->messages->VolumeUp;
+        break;
+    default:
+        return NULL;
+        break;
+    }
+}
+void setMessage(void* context, int index, Signal* signal) {
+    FancyRemote* app = context;
+    switch(index) {
+    case Button_NavigateDown:
+        app->messages->NavigateDown = signal;
+        break;
+    case Button_NavigateLeft:
+        app->messages->NavigateLeft = signal;
+        break;
+    case Button_NavigateRight:
+        app->messages->NavigateRight = signal;
+        break;
+    case Button_NavigateUp:
+        app->messages->NavigateUp = signal;
+        break;
+    case Button_Power:
+        app->messages->Power = signal;
+        break;
+    case Button_VolumeDown:
+        app->messages->VolumeDown = signal;
+        break;
+    case Button_VolumeUp:
+        app->messages->VolumeUp = signal;
+        break;
+    }
 }
 void makeButton(void* context, int index) {
     FancyRemote* app = context;
     FuriString* o = furi_string_alloc();
     flipper_format_read_string(app->flipperFormat, "type", o);
-    if(strcmp(furi_string_get_cstr(o), "parsed")) {
-        InfraredMessage* message;
-        message->protocol = getProtocol(context);
-        message->address = getAdress(context);
-        message->command = getCommand(context);
-        switch(index) {
-        case Button_VolumeUp:
-            app->messages->VolumeUp = message;
-            break;
-        case Button_VolumeDown:
-            app->messages->VolumeDown = message;
-            break;
-        case Button_NavigateDown:
-            app->messages->NavigateDown = message;
-            break;
-        case Button_NavigateLeft:
-            app->messages->NavigateLeft = message;
-            break;
-        case Button_NavigateRight:
-            app->messages->NavigateRight = message;
-            break;
-        case Button_NavigateUp:
-            app->messages->NavigateUp = message;
-            break;
-        case Button_Power:
-            app->messages->Power = message;
-        }
+    Signal* signal = malloc(sizeof(Signal));
+    const char* name = furi_string_get_cstr(o);
+    furi_string_free(o);
+    if(strcmp(name, "parsed") == 0) {
+        signal->isRaw = false;
+        signal->payload.message.protocol = getProtocol(context);
+        signal->payload.message.address = getAdress(context);
+        signal->payload.message.command = getCommand(context);
     } else {
+        signal->isRaw = true;
+        signal->payload.raw.frequency = getFrequency(context);
+        signal->payload.raw.duty_cycle = getDutyCycle(context);
+        signal->payload.raw.size = getTimingsSize(context);
+        signal->payload.raw.size = (uint32_t)getTimings(context, signal->payload.raw.size);
     }
+    setMessage(context, index, signal);
 }
 void processButton(void* context, FuriString* nameIn) {
-    FancyRemote* app = context;
     const char* name = furi_string_get_cstr(nameIn);
-    if(strcmp(name, fancy_remote_Volume_up)) {
+    if(strcmp(name, fancy_remote_Volume_up) == 0) {
         makeButton(context, Button_VolumeUp);
-    } else if(strcmp(name, fancy_remote_Volume_down)) {
+    } else if(strcmp(name, fancy_remote_Volume_down) == 0) {
         makeButton(context, Button_VolumeDown);
     }
 }
 
-const char* getFileText(void* context) {
+void irDataInit(void* context) {
     FancyRemote* app = context;
-    int a = 0;
     FuriString* o = furi_string_alloc();
     if(flipper_format_file_open_existing(app->flipperFormat, EXT_PATH("infrared/Cable.ir"))) {
         while(flipper_format_read_string(app->flipperFormat, "name", o)) {
             processButton(context, o);
         }
     }
-    const char* out = furi_string_get_cstr(o);
-    return out;
+    furi_string_free(o);
     flipper_format_file_close(app->flipperFormat);
-    if(a == 0) {
-        return "zero";
-    } else if(a == 1) {
-        return "one";
-    } else if(a == 2) {
-        return "two";
-    } else if(a == 3) {
-        return "three";
-    } else if(a == 4) {
-        return "four";
-    } else if(a == -1) {
-        return "negative";
+}
+
+void sendIrSignal(void* context, int index) {
+    Signal* signal = indexToMessage(context, index);
+    if(signal->isRaw) {
+        infrared_send_raw_ext(
+            &signal->payload.raw.data,
+            signal->payload.raw.size,
+            true,
+            signal->payload.raw.frequency,
+            signal->payload.raw.duty_cycle);
     } else {
-        return "more";
+        infrared_send(&signal->payload.message, 1);
     }
 }
-void fancy_remote_button_press(void* context, uint32_t index) {
-    UNUSED(index);
-    FancyRemote* app = context;
-    UNUSED(app);
-}
+
 void fancy_remote_menu_callback_main_menu(void* context, uint32_t index) {
     FancyRemote* app = context;
     switch(index) {
@@ -247,7 +320,7 @@ void fancy_remote_scene_on_enter_PopupOne(void* context) {
     popup_set_context(app->popup, app);
     popup_set_header(app->popup, "Pop#1", 60, 10, AlignCenter, AlignTop);
     popup_set_icon(app->popup, 10, 10, NULL);
-    popup_set_text(app->popup, getFileText(context), 60, 20, AlignLeft, AlignTop);
+    popup_set_text(app->popup, "have some text", 60, 20, AlignLeft, AlignTop);
     view_dispatcher_switch_to_view(app->view_dispatcher, FView_Popup);
 }
 void fancy_remote_scene_on_enter_RecordPanel(void* context) {
@@ -323,7 +396,7 @@ void fancy_remote_scene_on_enter_RemotePanel(void* context) {
     button_panel_reserve(app->buttonPanel, 1, 2);
     /*using 69 puts the bottom of the volume down button at the bottom of the screen
     (screen height of 128, block height of 59, 128-59=69) */
-    addVolumeButtons(context, 0, 0, 17, 69, backToHome, backToHome);
+    addVolumeButtons(context, 0, 0, 17, 69, sendIrSignal, sendIrSignal);
     view_dispatcher_switch_to_view(app->view_dispatcher, FView_ButtonPanel);
 }
 void fancy_remote_scene_on_enter_EditPanel(void* context) {
@@ -404,13 +477,18 @@ FancyRemote* fancy_remote_init() {
     FancyRemote* app = malloc(sizeof(FancyRemote));
     app->storage = furi_record_open(RECORD_STORAGE);
     app->flipperFormat = flipper_format_file_alloc(app->storage);
-    app->infraredWorker = infrared_worker_alloc();
+    app->messages = malloc(sizeof(Messages));
+    irDataInit(app);
     fancy_remote_scene_manager_init(app);
     fancy_remote_view_dispatcher_init(app);
     return app;
 }
 //frees all data when done
 void fancy_remote_free(FancyRemote* app) {
+    for(uint8_t i = 0; i < sizeof(Messages) / sizeof(Signal*); i++) {
+        free(((Signal**)app->messages)[i]);
+    }
+    free(app->messages);
     scene_manager_free(app->scene_manager);
     view_dispatcher_remove_view(app->view_dispatcher, FView_Menu);
     view_dispatcher_remove_view(app->view_dispatcher, FView_Popup);
@@ -420,10 +498,9 @@ void fancy_remote_free(FancyRemote* app) {
     popup_free(app->popup);
     button_panel_free(app->buttonPanel);
     flipper_format_free(app->flipperFormat);
-    infrared_worker_free(app->infraredWorker);
     free(app);
 }
-int32_t fancy_remote_app(/*void* p*/) {
+int32_t fancy_remote_app() {
     FancyRemote* app = fancy_remote_init();
     Gui* gui = furi_record_open(RECORD_GUI);
     view_dispatcher_attach_to_gui(app->view_dispatcher, gui, ViewDispatcherTypeFullscreen);
