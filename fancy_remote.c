@@ -46,7 +46,8 @@ typedef enum {
     Button_NavigateUp,
     Button_NavigateRight,
     Button_NavigateDown,
-    Button_Power
+    Button_Power,
+    Button_Confirm
 } Button;
 const char* buttonNames[] = {
     "Volume_up",
@@ -55,7 +56,8 @@ const char* buttonNames[] = {
     "Navigate_up",
     "Navigate_right",
     "Navigate_down",
-    "Power"};
+    "Power",
+    "Confirm"};
 typedef struct {
     uint32_t frequency;
     float duty_cycle;
@@ -321,8 +323,8 @@ void backToHome(void* context, uint32_t index, InputType type) {
 }
 void addVolumeButtons(void* context, int Vx, int Vy, int x, int y) {
     /*
-    in origional the text is at (35,66), volume up is at (38,53), and volume down is at (38,91)
-    so relative measurments are: volUp:(+3,+0),text:(+0,+13),volDown(+3,+25)
+    in origional  volume up is at (38,53), and volume down is at (38,91)
+    so relative measurments are: volUp:(+3,+0),volDown(+3,+20)
     */
     FancyRemote* app = context;
     upgraded_button_panel_add_item(
@@ -336,14 +338,13 @@ void addVolumeButtons(void* context, int Vx, int Vy, int x, int y) {
         &I_volup_hover_24x21,
         *sendIrSignal,
         context);
-    upgraded_button_panel_add_icon(app->buttonPanel, x, y + 13, &I_vol_tv_text_29x34);
     upgraded_button_panel_add_item(
         app->buttonPanel,
         Button_VolumeDown,
         Vx,
         Vy + 1,
         x + 3,
-        y + 38,
+        y + 22,
         &I_voldown_24x21,
         &I_voldown_hover_24x21,
         *sendIrSignal,
@@ -364,16 +365,80 @@ void addPowerButton(void* context, int Vx, int Vy, int x, int y) {
         &I_power_hover_19x20,
         *sendIrSignal,
         context);
-    upgraded_button_panel_add_icon(app->buttonPanel, x, y + 22, &I_power_text_24x5);
+}
+void addNavigation(void* context, int Vx, int Vy, int x, int y) {
+    FancyRemote* app = context;
+    /*each button is either 24*18 or 18*24 with the center being 24*24
+    define (+0,+0) as the furthest up and to the left of all
+    navup (+18,+0), navleft (+0,+18), navdown (+18,+42), navright (+42,+18),center (+18,+18);
+    for virtual grid define (+0,+0) as the center
+    navup(+0,-1),navleft(-1,+0),navdown(+0,+1),navright(+1,+0),center(+0,+0);
+    */
+    upgraded_button_panel_add_item(
+        app->buttonPanel,
+        Button_NavigateUp,
+        Vx,
+        Vy - 1,
+        x + 18,
+        y,
+        &I_navup_24x18,
+        &I_navup_hover_24x18,
+        *sendIrSignal,
+        context);
+    upgraded_button_panel_add_item(
+        app->buttonPanel,
+        Button_NavigateLeft,
+        Vx - 1,
+        Vy,
+        x,
+        y + 18,
+        &I_navleft_18x24,
+        &I_navleft_hover_18x24,
+        *sendIrSignal,
+        context);
+    upgraded_button_panel_add_item(
+        app->buttonPanel,
+        Button_NavigateDown,
+        Vx,
+        Vy + 1,
+        x + 18,
+        y + 42,
+        &I_navdown_24x18,
+        &I_navdown_hover_24x18,
+        *sendIrSignal,
+        context);
+    upgraded_button_panel_add_item(
+        app->buttonPanel,
+        Button_NavigateRight,
+        Vx + 1,
+        Vy,
+        x + 42,
+        y + 18,
+        &I_navright_18x24,
+        &I_navright_hover_18x24,
+        *sendIrSignal,
+        context);
+    upgraded_button_panel_add_item(
+        app->buttonPanel,
+        Button_Confirm,
+        Vx,
+        Vy,
+        x + 18,
+        y + 18,
+        &I_navok_24x24,
+        &I_navok_hover_24x24,
+        *sendIrSignal,
+        context);
 }
 void fancy_remote_scene_on_enter_RemotePanel(void* context) {
     FancyRemote* app = context;
     upgraded_button_panel_reset(app->buttonPanel);
-    upgraded_button_panel_reserve(app->buttonPanel, 1, 3);
+    upgraded_button_panel_reserve(app->buttonPanel, 3, 6);
     /*using 69 puts the bottom of the volume down button at the bottom of the screen
     (screen height of 128, block height of 59, 128-59=69) */
-    addPowerButton(context, 0, 0, 20, 5);
-    addVolumeButtons(context, 0, 1, 17, 69);
+    addPowerButton(context, 1, 0, 20, 0);
+    addNavigation(context, 1, 2, 2, 23);
+    addVolumeButtons(context, 1, 4, 16, 85);
 
     view_dispatcher_switch_to_view(app->view_dispatcher, FView_UpgradedButtonPanel);
 }
