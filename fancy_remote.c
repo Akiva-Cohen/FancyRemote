@@ -56,7 +56,7 @@ const char* buttonNames[] = {
 typedef struct {
     uint32_t frequency;
     float duty_cycle;
-    uint32_t data;
+    uint32_t* data;
     uint32_t size;
 } RawSignal;
 
@@ -169,7 +169,7 @@ bool makeBody(Signal* signal, FlipperFormat* ff) {
     furi_string_free(tmp);
     return out;
 }
-void makeSignal(void* context, Signal* signal, int index) {
+bool makeSignal(void* context, Signal* signal, int index) {
     FancyRemote* app = context;
     Storage* storage = furi_record_open(RECORD_STORAGE);
     FlipperFormat* ff = flipper_format_buffered_file_alloc(storage);
@@ -192,20 +192,23 @@ void makeSignal(void* context, Signal* signal, int index) {
 }
 void sendIrSignal(void* context, int index) {
     FancyRemote* app = context;
+    bool go = true;
     if(app->currentIndex != index) {
-        makeSignal(context, app->current, index);
+        go = makeSignal(context, app->current, index);
     }
-    bool test = app->current->isRaw;
-    if(test) {
-        infrared_send_raw_ext(
-            &app->current->payload.raw.data,
-            app->current->payload.raw.size,
-            true,
-            app->current->payload.raw.frequency,
-            app->current->payload.raw.duty_cycle);
-    } else {
-        const InfraredMessage* message = &app->current->payload.message;
-        infrared_send(message, 10);
+    if(go) {
+        bool test = app->current->isRaw;
+        if(test) {
+            infrared_send_raw_ext(
+                app->current->payload.raw.data,
+                app->current->payload.raw.size,
+                true,
+                app->current->payload.raw.frequency,
+                app->current->payload.raw.duty_cycle);
+        } else {
+            const InfraredMessage* message = &app->current->payload.message;
+            infrared_send(message, 10);
+        }
     }
 }
 
