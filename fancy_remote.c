@@ -97,26 +97,6 @@ typedef enum {
 const char* fancy_remote_Volume_up = "Volume_up";
 const char* fancy_remote_Volume_down = "Volume_down";
 
-InfraredProtocol getProtocol(void* context) {
-    FancyRemote* app = context;
-    FuriString* o = furi_string_alloc();
-    flipper_format_read_string(app->flipperFormat, "protocol", o);
-    const char* outC = furi_string_get_cstr(o);
-    furi_string_free(o);
-    return infrared_get_protocol_by_name(outC);
-}
-uint32_t getAdress(void* context) {
-    FancyRemote* app = context;
-    uint8_t data = 0;
-    flipper_format_read_hex(app->flipperFormat, "address", &data, 4);
-    return data;
-}
-uint32_t getCommand(void* context) {
-    FancyRemote* app = context;
-    uint8_t data = 0;
-    flipper_format_read_hex(app->flipperFormat, "command", &data, 4);
-    return data;
-}
 uint32_t getFrequency(void* context) {
     FancyRemote* app = context;
     uint32_t num;
@@ -204,14 +184,20 @@ void makeButton(void* context, int index) {
     FuriString* o = furi_string_alloc();
     flipper_format_read_string(app->flipperFormat, "type", o);
     Signal* signal = malloc(sizeof(Signal));
+    FlipperFormat* ff = app->flipperFormat;
     const char* name = furi_string_get_cstr(o);
     furi_string_free(o);
     if(strcmp(name, "parsed") == 0) {
         signal->isRaw = false;
-        signal->payload.message.protocol = getProtocol(context);
-        signal->payload.message.address = getAdress(context);
-        signal->payload.message.command = getCommand(context);
-    } else {
+        InfraredMessage message = signal->payload.message;
+        FuriString* buf = furi_string_alloc();
+        flipper_format_read_string(ff, "protocol", buf);
+        message.protocol = infrared_get_protocol_by_name(furi_string_get_cstr(buf));
+        furi_string_free(buf);
+        flipper_format_read_hex(ff, "address", (uint8_t*)&message.address, 4);
+        flipper_format_read_hex(ff, "command", (uint8_t*)message.command, 4);
+        message.repeat = true;
+    } else if(strcmp(name, "raw") == 0) {
         signal->isRaw = true;
         signal->payload.raw.frequency = getFrequency(context);
         signal->payload.raw.duty_cycle = getDutyCycle(context);
@@ -243,7 +229,8 @@ void irDataInit(void* context) {
 
 void sendIrSignal(void* context, int index) {
     Signal* signal = indexToMessage(context, index);
-    if(signal->isRaw) {
+    bool test = signal->isRaw;
+    if(test) {
         infrared_send_raw_ext(
             &signal->payload.raw.data,
             signal->payload.raw.size,
@@ -251,7 +238,8 @@ void sendIrSignal(void* context, int index) {
             signal->payload.raw.frequency,
             signal->payload.raw.duty_cycle);
     } else {
-        infrared_send(&signal->payload.message, 1);
+        const InfraredMessage* message = &signal->payload.message;
+        infrared_send(message, 10);
     }
 }
 
