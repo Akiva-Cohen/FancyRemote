@@ -24,6 +24,9 @@
 
 #include <infrared_worker.h>
 
+#include <notification/notification.h>
+#include <notification/notification_messages.h>
+#include <notification/notification_messages_notes.h>
 typedef enum {
     Scene_MainMenu,
     Scene_PopupOne,
@@ -80,6 +83,7 @@ typedef struct {
     UpgradedButtonPanel* buttonPanel;
     InfraredWorker* worker;
     Signal* current;
+    NotificationApp* notify;
     int currentIndex;
 } FancyRemote;
 
@@ -213,9 +217,11 @@ void sendIrSignal(void* context, uint32_t index, InputType type) {
                 const InfraredMessage message = app->current->message;
                 infrared_worker_set_decoded_signal(app->worker, &message);
             }
+            notification_message(app->notify, &sequence_blink_start_magenta);
             infrared_worker_tx_start(app->worker);
         }
     } else if(type == InputTypeRelease) {
+        notification_message(app->notify, &sequence_blink_stop);
         infrared_worker_tx_stop(app->worker);
     }
 }
@@ -523,12 +529,15 @@ FancyRemote* fancy_remote_init() {
     FancyRemote* app = malloc(sizeof(FancyRemote));
     app->worker = infrared_worker_alloc();
     app->current = malloc(sizeof(Signal));
+    app->notify = furi_record_open(RECORD_NOTIFICATION);
     fancy_remote_scene_manager_init(app);
     fancy_remote_view_dispatcher_init(app);
     return app;
 }
 //frees all data when done
 void fancy_remote_free(FancyRemote* app) {
+    furi_record_close(RECORD_NOTIFICATION);
+    app->notify = NULL;
     infrared_worker_free(app->worker);
     scene_manager_free(app->scene_manager);
     view_dispatcher_remove_view(app->view_dispatcher, FView_Menu);
