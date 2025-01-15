@@ -425,6 +425,7 @@ void fancy_remote_select_and_run(FancyRemote* app) {
         view_dispatcher_run(app->view_dispatcher);
     }
 }
+
 int32_t fancy_remote_app() {
     FancyRemote* app = fancy_remote_init();
     Gui* gui = furi_record_open(RECORD_GUI);
