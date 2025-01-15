@@ -423,8 +423,6 @@ void fancy_remote_select_and_run(FancyRemote* app) {
         dialog_file_browser_show(app->dialogs, app->path, app->path, &browser_options);
     if(done) {
         view_dispatcher_run(app->view_dispatcher);
-    } else {
-        fancy_remote_select_and_run(app);
     }
 }
 int32_t fancy_remote_app() {
