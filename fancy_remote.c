@@ -396,7 +396,7 @@ FancyRemote* fancy_remote_init() {
     app->worker = infrared_worker_alloc();
     app->current = malloc(sizeof(Signal));
     app->notify = furi_record_open(RECORD_NOTIFICATION);
-    app->path = furi_string_alloc();
+    app->path = furi_string_alloc_set(EXT_PATH("infrared"));
     app->dialogs = furi_record_open(RECORD_DIALOGS);
     fancy_remote_scene_manager_init(app);
     fancy_remote_view_dispatcher_init(app);
@@ -423,6 +423,8 @@ void fancy_remote_select_and_run(FancyRemote* app) {
         dialog_file_browser_show(app->dialogs, app->path, app->path, &browser_options);
     if(done) {
         view_dispatcher_run(app->view_dispatcher);
+    } else {
+        fancy_remote_select_and_run(app);
     }
 }
 int32_t fancy_remote_app() {
