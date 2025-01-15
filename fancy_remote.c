@@ -56,7 +56,6 @@ typedef struct {
     RawSignal raw;
 } Signal;
 
-//define an array so they would be mapped
 typedef struct {
     SceneManager* scene_manager;
     ViewDispatcher* view_dispatcher;
@@ -66,7 +65,6 @@ typedef struct {
     NotificationApp* notify;
     DialogsApp* dialogs;
     FuriString* path;
-    int currentIndex;
 } FancyRemote;
 
 typedef enum {
@@ -164,9 +162,7 @@ bool makeSignal(void* context, Signal* signal, int index) {
     }
     furi_string_free(tmp);
     bool out = makeBody(signal, ff);
-    if(out) {
-        app->currentIndex = index;
-    }
+
     flipper_format_buffered_file_close(ff);
     flipper_format_free(ff);
     furi_record_close(RECORD_STORAGE);
@@ -362,7 +358,6 @@ bool fancy_remote_scene_manager_custom_event_callback(void* context, uint32_t cu
 void fancy_remote_view_dispatcher_init(FancyRemote* app) {
     app->view_dispatcher = view_dispatcher_alloc();
     app->buttonPanel = upgraded_button_panel_alloc();
-    app->currentIndex = -1;
 
     view_dispatcher_set_event_callback_context(app->view_dispatcher, app);
     view_dispatcher_set_custom_event_callback(
