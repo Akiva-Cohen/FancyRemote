@@ -251,11 +251,11 @@ void addPowerButton(void* context, int Vx, int Vy, int x, int y) {
 void addNavigation(void* context, int Vx, int Vy, int x, int y) {
     FancyRemote* app = context;
     /*each button is either 24*18 or 18*24 with the center being 24*24
-    define (+0,+0) as the furthest up and to the left of all
-    navup (+18,+0), navleft (+0,+18), navdown (+18,+42), navright (+42,+18),center (+18,+18);
-    for virtual grid define (+0,+0) as the center
-    navup(+0,-1),navleft(-1,+0),navdown(+0,+1),navright(+1,+0),center(+0,+0);
-    */
+        define (+0,+0) as the furthest up and to the left of all
+        navup (+18,+0), navleft (+0,+18), navdown (+18,+42), navright (+42,+18),center (+18,+18);
+        for virtual grid define (+0,+0) as the center
+        navup(+0,-1),navleft(-1,+0),navdown(+0,+1),navright(+1,+0),center(+0,+0);
+        */
     upgraded_button_panel_add_item(
         app->buttonPanel,
         Button_NavigateUp,
@@ -324,11 +324,9 @@ void fancy_remote_scene_on_enter_RemotePanel(void* context) {
 
     view_dispatcher_switch_to_view(app->view_dispatcher, FView_UpgradedButtonPanel);
 }
-
 bool fancy_remote_scene_on_event_RemotePanel() {
     return false;
 }
-
 void fancy_remote_scene_on_exit_RemotePanel(void* context) {
     FancyRemote* app = context;
     upgraded_button_panel_reset(app->buttonPanel);
